@@ -15,7 +15,8 @@
 #define BL1 44 
 #define BL2 42 
 #define BR1 50 
-#define BR2 48 
+#define BR2 48
+int DiFR = 1, DiFL = 1, DiBR = 1, DiBL = 1;
 // 
 //Пины enable драйверов 
 // 
@@ -32,8 +33,29 @@
 //
 //Пид-Регулятор
 //
-int deflect = 0;
-int CPt = 0, CPr = 0, CPt = 0;
+//коэффиценты
+int snsr[8];
+int K_f = 0;
+int K_p = 0;
+int K_n = 1;
+int SpeedL = 0;
+int SpeedR = 0;
+int NSpeedL = 150;
+int NSpeedR = 150;
+int last_f = 0;
+int last_p = 0;
+int level;
+//
+//!Глаза!
+//
+#define L1 A8
+#define L2 A9
+#define L3 A10
+#define L4 A11
+#define R4 A12
+#define R3 A13
+#define R2 A14
+#define R1 A15
 void setup() { 
 pinMode(FL1, INPUT_PULLUP);
 pinMode(FL2, INPUT_PULLUP);
@@ -44,27 +66,91 @@ pinMode(BL2, INPUT_PULLUP);
 pinMode(BR1, INPUT_PULLUP);
 pinMode(BR2, INPUT_PULLUP);
 
+pinMode(L1, INPUT_PULLUP);
+pinMode(L2, INPUT_PULLUP);
+pinMode(L3, INPUT_PULLUP);
+pinMode(L4, INPUT_PULLUP);
+pinMode(R4, INPUT_PULLUP);
+pinMode(R3, INPUT_PULLUP);
+pinMode(R2, INPUT_PULLUP);
+pinMode(R1, INPUT_PULLUP);
+Serial.begin(9600);
+digitalWrite(EnDf, 1);
+digitalWrite(EnDb, 1);
+SetDirection(true, true, true, true);
 } 
 void loop() { 
-deflect = DefMeasure();
-digitalWrite(FL1, 0);
-digitalWrite(FL2, 1);
-digitalWrite(FR1, 0);
-digitalWrite(FR2, 1);
-digitalWrite(BL1, 0);
-digitalWrite(BL2, 1);
-digitalWrite(BR1, 0);
-digitalWrite(BR2, 1);
-analogWrite(EnFl,100);
-analogWrite(EnFr,100);
-analogWrite(EnBl,100);
-analogWrite(EnBr,100);
+Run();
 
-
-
+delay(500);
+}
+int Get(){
+for(int i = 0;i < 8;i++){
+  snsr[i] = analogRead(i + 62);
+  }
+  return snsr;
+}
+void SetDirection(bool FL, bool FR, bool BL, bool BR){
+  
+digitalWrite(FL1, FR);
+digitalWrite(FL2, !FR);
+digitalWrite(FR1, FL);
+digitalWrite(FR2, !FL);
+digitalWrite(BL1, BR);
+digitalWrite(BL2, !BR);
+digitalWrite(BR1, BL);
+digitalWrite(BR2, !BL);
+}
+void Run(){
+  int deflect = DefMeasure(Get(), 0);
+  last_p = last_p + K_p * deflect;
+  level = K_n * deflect + last_p + K_f * (deflect - last_f);
+  last_f = deflect;
+  analogWrite(EnFr,constrain(NSpeedR - level, 0, 255));
+  analogWrite(EnBr,constrain(NSpeedR - level, 0, 255));
+  analogWrite(EnFl,constrain(NSpeedL + level, 0, 255));
+  analogWrite(EnBl,constrain(NSpeedL + level, 0, 255));  
 }
 
-int DefMeasure(){
+int DefMeasure(int sensors[8], int cntr) {
 
-  return 0;
+  cntr = constrain(cntr, -4, 4);
+  int summ = 0;
+  bool points[8];
+  int negative;
+  int positive;
+  for (int i = 0 ; i < 8; i++) {
+    summ += sensors[i];
+  }
+  int s_avg = summ / 8;
+
+  for (int i = 0 ; i < 8; i++) {
+    if (sensors[i] > s_avg * 1.5) {
+      points[i] = 1;
+    } else {
+      points[i] = 0;
+    }
+  }
+  int dd = 0;
+  for (int i = 8 ; i > 0 ; i--) {
+    if (points[i] == 1 and i <= 8 + cntr) {
+      if (constrain(i - 1, 0, 8) != constrain(i, 0, 8)) {
+        dd = sensors[constrain(i - 1, 0, 8)] + sensors[constrain(i, 0, 8)];
+      } else {
+        dd = sensors[constrain(i, 0, 8)];
+      }
+      negative = 0 - (((constrain(4 + cntr - i , 0, 8)) * 450) + dd) ;
+    }
+  }
+  for (int i = 0 ; i < 8 ; i++) {
+    if (points[i] == 1 and i >= 4 + cntr) {
+      if (constrain(i + 1, 0, 8) != constrain(i, 0, 8)) {
+        dd = sensors[constrain(i + 1, 0, 8)] + sensors[constrain(i, 0, 8)];
+      } else {
+        dd = sensors[constrain(i, 0, 8)];
+      }
+      positive =  (((constrain(-4 + cntr + i , 0, 8)) * 450) + dd) ;
+    }
+  }
+  return (positive + negative) ;
 }
